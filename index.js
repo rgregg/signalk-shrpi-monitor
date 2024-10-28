@@ -149,15 +149,24 @@ module.exports = function(app) {
         }]
     });
 
+    
+    
+    let isUpdating = false;
     function updateEnv() {
-      getSailorHatValues()
-      getSailorHatState()
+      if (isUpdating) {
+        debug("updateEnv called while we were already in progress of an update. skipping run");
+        return;
+      } 
+      isUpdating = true;
+      getSailorHatValues();
+      getSailorHatState();
+      isUpdating = false;
+      debug("updateEnv has finished running.");
     }
-
     function getSailorHatValues() {
       // {"V_in": 11.912109375, "V_supercap": 8.793017578125, "I_in": 0.3515625, "T_mcu": 298.9921875}
       
-      const options = {
+      const httpOptions = {
         socketPath: options.default_socket, // Path to the Unix socket
         path: '/values',                     // URL path of the request
         method: 'GET',                      // HTTP method
@@ -166,7 +175,7 @@ module.exports = function(app) {
         }
       };
 
-      const request = http.request(options, (response) => {
+      const request = http.request(httpOptions, (response) => {
         let data = '';
       
         response.on('data', (chunk) => {
@@ -175,40 +184,48 @@ module.exports = function(app) {
       
         response.on('end', () => {
           debug(`got values: ${data}`)
-          const jsonData = JSON.parse(data);
-
-          // Destructure individual variables
-          const { V_in, V_supercap, I_in, T_mcu } = jsonData;
-
-          app.handleMessage(plugin.id, {
-            updates: [
-              {
-                values: [ 
-                  {
-                    path: options.path_input_voltage,
-                    value: Number(V_in)
-                  },
-                  {
-                    path: options.path_caps_voltage,
-                    value: Number(V_supercap)
-                  },
-                  {
-                    path: options.path_input_amps,
-                    value: Number(I_in)
-                  },
-                  {
-                    path: options.path_mcu_temp,
-                    value: Number(T_mcu)
-                  }
-                ]
-              }
-            ]
-          })
+          
+          try
+          {
+            const jsonData = JSON.parse(data);
+            // Destructure individual variables
+            const { V_in, V_supercap, I_in, T_mcu } = jsonData;
+  
+            app.handleMessage(plugin.id, {
+              updates: [
+                {
+                  values: [ 
+                    {
+                      path: options.path_input_voltage,
+                      value: Number(V_in)
+                    },
+                    {
+                      path: options.path_caps_voltage,
+                      value: Number(V_supercap)
+                    },
+                    {
+                      path: options.path_input_amps,
+                      value: Number(I_in)
+                    },
+                    {
+                      path: options.path_mcu_temp,
+                      value: Number(T_mcu)
+                    }
+                  ]
+                }
+              ]
+            })
+          }
+          catch (error)
+          {
+            debug(`error parsing JSON: ${error}`)
+          }
+          
         });
       });
       
       request.on('error', (error) => {
-        console.error('Error:', error);
+        debug(`Error on request: ${error}`)
       });
       
       request.end();
@@ -217,7 +234,7 @@ module.exports = function(app) {
     function getSailorHatState() {
       // {"state": "POWER_ON_5V_ON", "5v_output_enabled": true, "watchdog_enabled": true}
 
-      const options = {
+      const httpOptions = {
         socketPath: options.default_socket, // Path to the Unix socket
         path: '/state',                     // URL path of the request
         method: 'GET',                      // HTTP method
@@ -226,7 +243,7 @@ module.exports = function(app) {
         }
       };
 
-      const request = http.request(options, (response) => {
+      const request = http.request(httpOptions, (response) => {
         let data = '';
       
         response.on('data', (chunk) => {
@@ -234,47 +251,57 @@ module.exports = function(app) {
         });
       
         response.on('end', () => {
-          debug(`got values: ${data}`)
-          const jsonData = JSON.parse(data);
+          debug(`got state: ${data}`)
+          try {
 
-          // Destructure individual variables
-          const { state, "5v_output_enabled": outputEnabled, "watchdog_enabled": watchdogEnabled } = jsonData;
+            
+            const jsonData = JSON.parse(data);
 
-          app.handleMessage(plugin.id, {
-            updates: [
-              {
-                values: [ 
-                  {
-                    path: options.path_shrpi_state,
-                    value: state
-                  },
-                  {
-                    path: options.path_output_enabled,
-                    value: outputEnabled
-                  },
-                  {
-                    path: options.path_watchdog_enabled,
-                    value: watchdogEnabled
-                  },
-                ]
-              }
-            ]
-          })
+            // Destructure individual variables
+            const { state, "5v_output_enabled": outputEnabled, "watchdog_enabled": watchdogEnabled } = jsonData;
+
+            app.handleMessage(plugin.id, {
+              updates: [
+                {
+                  values: [ 
+                    {
+                      path: options.path_shrpi_state,
+                      value: state
+                    },
+                    {
+                      path: options.path_output_enabled,
+                      value: outputEnabled
+                    },
+                    {
+                      path: options.path_watchdog_enabled,
+                      value: watchdogEnabled
+                    },
+                  ]
+                }
+              ]
+            })
+          }
+          catch (error)
+          {
+            debug(`error parsing JSON: ${error}`)
+          }
         });
       });
       
       request.on('error', (error) => {
-        console.error('Error:', error);
+        debug(`Error on request: ${error}`)
       });
       
       request.end();
     }
 
+    debug(`interval set to ${options.rate}`)
     updateEnv()
     setInterval(updateEnv, options.rate * 1000)
   }
 
   plugin.stop = function() {
+    debug("plugin stopping")
     if ( timer ) {
       clearInterval(timer)
       timer =  null
