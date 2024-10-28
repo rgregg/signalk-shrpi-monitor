@@ -1,4 +1,8 @@
 /*
+ * Copyright 2024 Ryan Gregg (ryan@ryangregg.com)
+ * This plugin is a modiifed version of:
+ * https://github.com/sberl/signalk-rpi-monitor
+ * 
  * Copyright 2022 Steve Berl (steveberl@gmail.com)
  * This plugin is a modified version of:
  * https://github.com/nmostovoy/signalk-raspberry-pi-monitoring
@@ -23,18 +27,9 @@
  */
 
 const debug = require('debug')('signalk-shrpi-monitor')
-const _ = require('lodash')
-//const spawn = require('child_process').spawn
 const http = require('http');
 
-const get_state_command = 'curl --unix-socket /var/run/shrpid.sock http://localhost/state'
-const get_values_command = 'curl --unix-socket /var/run/shrpid.sock http://localhost/values'
-
-// const gpu_temp_command = 'vcgencmd measure_temp'
-// const cpu_temp_command = 'cat /sys/class/thermal/thermal_zone0/temp'
-// const cpu_util_mpstat_command = 'S_TIME_FORMAT=\'ISO\' mpstat -P ALL 5 1 | sed -n 4,8p'
-// const mem_util_command = 'cat /proc/meminfo'
-// const sd_util_command = 'df --output=pcent \/\| tail -1 \| awk \'gsub\(\"\%\",\"\"\)\''
+console.log("loading signalk-shrpi-monitor")
 
 module.exports = function(app) {
   var plugin = {};
@@ -98,7 +93,8 @@ module.exports = function(app) {
 
 
   plugin.start = function(options) {
-    debug("start")
+    debug("start");
+    console.log("starting signalk-shrpi-monitor");
 
     // notify server, once, of units metadata
     app.handleMessage(plugin.id, {
@@ -183,7 +179,7 @@ module.exports = function(app) {
         });
       
         response.on('end', () => {
-          debug(`got values: ${data}`)
+          debug(`got values: ${data}`);
           
           try
           {
@@ -214,18 +210,18 @@ module.exports = function(app) {
                   ]
                 }
               ]
-            })
+            });
           }
           catch (error)
           {
-            debug(`error parsing JSON: ${error}`)
+            debug(`error parsing JSON: ${error}`);
           }
           
         });
       });
       
       request.on('error', (error) => {
-        debug(`Error on request: ${error}`)
+        debug(`Error on request: ${error}`);
       });
       
       request.end();
@@ -251,10 +247,8 @@ module.exports = function(app) {
         });
       
         response.on('end', () => {
-          debug(`got state: ${data}`)
+          debug(`got state: ${data}`);
           try {
-
-            
             const jsonData = JSON.parse(data);
 
             // Destructure individual variables
@@ -279,34 +273,34 @@ module.exports = function(app) {
                   ]
                 }
               ]
-            })
+            });
           }
           catch (error)
           {
-            debug(`error parsing JSON: ${error}`)
+            debug(`error parsing JSON: ${error}`);
           }
         });
       });
       
       request.on('error', (error) => {
-        debug(`Error on request: ${error}`)
+        debug(`Error on request: ${error}`);
       });
       
       request.end();
     }
 
-    debug(`interval set to ${options.rate}`)
-    updateEnv()
-    setInterval(updateEnv, options.rate * 1000)
+    debug(`interval set to ${options.rate}`);
+    updateEnv();
+    setInterval(updateEnv, options.rate * 1000);
   }
 
   plugin.stop = function() {
     debug("plugin stopping")
     if ( timer ) {
-      clearInterval(timer)
-      timer =  null
+      clearInterval(timer);
+      timer =  null;
     }
   }
 
-  return plugin
+  return plugin;
 }

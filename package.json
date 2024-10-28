@@ -8,7 +8,7 @@
     "signalk-category-utility",
     "signalk-category-hardware"
   ],
- "author": {
+  "author": {
     "name": "Ryan Gregg",
     "email": "ryan@ryangregg.com"
   },
@@ -17,8 +17,7 @@
   },
   "bundleDependencies": [],
   "dependencies": {
-    "debug": "^2.2.0",
-    "lodash": "^4.17.21"
+    "debug": "^2.2.0"
   },
   "deprecated": false,
   "license": "Apache-2.0",
