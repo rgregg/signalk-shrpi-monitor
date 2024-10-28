@@ -1,20 +1,22 @@
-# signalk-rpi-monitor
-Signal K Node Server Plugin for Raspberry PI monitoring (based on signalk-raspberry-pi-temperature and signalk-raspberry-pi-monitoring)
+# signalk-shrpi-monitor
+Signal K Node Server Plugin for Sailor Hat monitoring (based on signalk-rpi-monitor)
 
 Reports:
-- CPU Utilization averaged over the past 5 seconds
-- Memory utilization (fraction of total)
-- Storage Utilization (fraction of total)
-- CPU Temperature (degrees Kelvin)
-- GPU Temperature (degrees Kelvin)
+- Input Voltage
+- SuperCaps Voltage
+- Input Amperage
+- MCU temperature (Kelvin)
+- System Status 
 
-In order for CPU utilization to work, you must install the sysstat package. 
-On a Raspberry Pi you can do this with:
+In order for the plugin to work, the [Sailor Hat software](https://docs.hatlabs.fi/sh-rpi/docs/software/)
+must be installed and configured on the host device.
 
-```
-sudo apt-get update
-sudo apt-get install sysstat
-```
+Additionally the unix socket for accessing data must be
+available to the SignalK service. This is configurable
+through the plugin options. If you are running SignalK
+in a docker container, make sure to pass the socket into
+the container.
+
 
 Big thanks people who developed the previous generations of monitoring for the Raspberry Pi.
 This code is based on:

@@ -1,9 +1,9 @@
 /*
- *  Copyright 2022 Steve Berl (steveberl@gmail.com)
+ * Copyright 2022 Steve Berl (steveberl@gmail.com)
  * This plugin is a modified version of:
  * https://github.com/nmostovoy/signalk-raspberry-pi-monitoring
  *
- *  which is a modified version of
+ * which is a modified version of
  * https://github.com/sbender9/signalk-raspberry-pi-temperature
  *
  * So a big thank you to those who built the foundation on which I am 
@@ -22,52 +22,71 @@
  * limitations under the License.
  */
 
-const debug = require('debug')('signalk-rpi-monitor')
+const debug = require('debug')('signalk-shrpi-monitor')
 const _ = require('lodash')
-const spawn = require('child_process').spawn
+//const spawn = require('child_process').spawn
+const http = require('http');
 
-const gpu_temp_command = 'vcgencmd measure_temp'
-const cpu_temp_command = 'cat /sys/class/thermal/thermal_zone0/temp'
-const cpu_util_mpstat_command = 'S_TIME_FORMAT=\'ISO\' mpstat -P ALL 5 1 | sed -n 4,8p'
-const mem_util_command = 'cat /proc/meminfo'
-const sd_util_command = 'df --output=pcent \/\| tail -1 \| awk \'gsub\(\"\%\",\"\"\)\''
+const get_state_command = 'curl --unix-socket /var/run/shrpid.sock http://localhost/state'
+const get_values_command = 'curl --unix-socket /var/run/shrpid.sock http://localhost/values'
+
+// const gpu_temp_command = 'vcgencmd measure_temp'
+// const cpu_temp_command = 'cat /sys/class/thermal/thermal_zone0/temp'
+// const cpu_util_mpstat_command = 'S_TIME_FORMAT=\'ISO\' mpstat -P ALL 5 1 | sed -n 4,8p'
+// const mem_util_command = 'cat /proc/meminfo'
+// const sd_util_command = 'df --output=pcent \/\| tail -1 \| awk \'gsub\(\"\%\",\"\"\)\''
 
 module.exports = function(app) {
   var plugin = {};
   var timer
 
-  plugin.id = "signalk-rpi-monitor"
-  plugin.name = "RPI Monitor"
-  plugin.description = "Signal K Node Server Plugin for Raspberry PI monitoring"
+  plugin.id = "signalk-shrpi-monitor"
+  plugin.name = "Sailor Hat monitor"
+  plugin.description = "Signal K Node Server Plugin for Sailor Hat montioring"
 
   plugin.schema = {
     type: "object",
-    description: "The user running node server must be in the video group to get GPU temperature",
+    description: "Configure the options for requesting and reporting data from the Sailor Hat board.",
     properties: {
-      path_cpu_temp: {
-        title: "SignalK Path for CPU temperature (K)",
+      default_socket: {
+        title: "UNIX socket for Sailor Data data",
         type: "string",
-        default: "environment.rpi.cpu.temperature",
+        default: "/var/run/shrpid.sock"
       },
-      path_gpu_temp: {
-        title: "SignalK Path for GPU temperature (K)",
+      path_mcu_temp: {
+        title: "SignalK Path for MCU temperature (K)",
         type: "string",
-        default: "environment.rpi.gpu.temperature",
+        default: "environment.sailorhat.mcu.temperature",
       },
-      path_cpu_util: {
-        title: "SignalK Path for CPU utilisation (Please install sysstat for per core monitoring)",
+      path_input_voltage: {
+        title: "SignalK Path for input voltage (V)",
         type: "string",
-        default: "environment.rpi.cpu.utilisation",
+        default: "environment.sailorhat.input.voltage",
       },
-      path_mem_util: {
-        title: "SignalK Path for memory utilisation",
+      path_input_amps: {
+        title: "SignalK Path for current input (A)",
         type: "string",
-        default: "environment.rpi.memory.utilisation",
+        default: "environment.sailorhat.input.amps",
       },
-      path_sd_util: {
-        title: "SignalK Path for SD card utilisation",
+      path_caps_voltage: {
+        title: "SignalK Path for super-capacitor voltage (V)",
         type: "string",
-        default: "environment.rpi.sd.utilisation",
+        default: "environment.sailorhat.capacitor.voltage",
+      },
+      path_shrpi_state: {
+        title: "SignalK Path for Sailor Hat state",
+        type: "string",
+        default: "environment.sailorhat.state"
+      },
+      path_output_enabled: {
+        title: "SignalK Path for 5V output enabled state",
+        type: "string",
+        default: "environment.sailorhat.5v_output"
+      },
+      path_watchdog_enabled: {
+        title: "SignalK Path for watchdog enabled",
+        type: "string",
+        default: "environment.sailorhat.watchdog_enabled"
       },
       rate: {
         title: "Sample Rate (in seconds)",
@@ -85,242 +104,170 @@ module.exports = function(app) {
     app.handleMessage(plugin.id, {
         updates: [{
             meta: [{
-                    path: options.path_cpu_temp,
+                    path: options.path_mcu_temp,
                     value: {
                         units: "K"
                     }
                 },
                 {
-                    path: options.path_gpu_temp,
+                    path: options.path_input_voltage,
                     value: {
-                        units: "K"
+                        units: "V"
                     }
                 },
                 {
-                    path: options.path_cpu_util,
+                    path: options.path_input_amps,
                     value: {
-                        units: "ratio"
+                        units: "A"
                     }
                 },
                 {
-                    path: options.path_mem_util,
+                    path: options.path_caps_voltage,
                     value: {
-                        units: "ratio"
+                        units: "V"
                     }
                 },
                 {
-                    path: options.path_sd_util,
-                    value: {
-                        units: "ratio"
-                    }
+                  path: options.path_shrpi_state,
+                  value: {
+                    units: "string"
+                  }
+                },
+                {
+                  path: options.path_output_enabled,
+                  value: {
+                    units: "string"
+                  }
+                },
+                {
+                  path: options.path_watchdog_enabled,
+                  value: {
+                    units: "string"
+                  }
                 },
             ]
         }]
     });
 
     function updateEnv() {
-      getGpuTemperature()
-      getCpuTemperature()
-      getCpuUtil()
-      getMemUtil()
-      getSdUtil()
+      getSailorHatValues()
+      getSailorHatState()
     }
 
-    function getGpuTemperature() {
-      var gputemp = spawn('sh', ['-c', gpu_temp_command ])
-
-      gputemp.stdout.on('data', (data) => {
-        debug(`got gpu  ${data}`)
-        var gpu_temp = (Number(data.toString().split('=')[1].split('\'')[0]) + 273.15).toFixed(2)
-        debug(`gpu temp is ${gpu_temp}`)
-
-        app.handleMessage(plugin.id, {
-          updates: [
-            {
-              values: [ {
-                path: options.path_gpu_temp,
-                value: Number(gpu_temp)
-              }]
-            }
-          ]
-        })
-      })
-
-      gputemp.on('error', (error) => {
-        console.error(error.toString())
-      })
-
-      gputemp.on('data', function (data) {
-        console.error(data.toString())
-      })
-    }
-
-    function getCpuTemperature() {
-      var cputemp = spawn('sh', ['-c', cpu_temp_command ])
-
-      cputemp.stdout.on('data', (data) => {
-        debug(`got cpu  ${data}`)
-        var cpu_temp = (Number(data)/1000 + 273.15).toFixed(2)
-        debug(`cpu temp is ${cpu_temp}`)
-
-        app.handleMessage(plugin.id, {
-          updates: [
-            {
-              values: [ {
-                path: options.path_cpu_temp,
-                value: Number(cpu_temp)
-              }]
-            }
-          ]
-        })
-      })
-
-      cputemp.on('error', (error) => {
-        console.error(error.toString())
-      })
-
-      cputemp.stderr.on('data', function (data) {
-        console.error(data.toString())
-      })
-    }
-
-    function getCpuUtil() {
-      var cpuutilfull = spawn('sh', ['-c', cpu_util_mpstat_command ])
-
-      cpuutilfull.stdout.on('data', (data) => {
-        debug(`got cpu utilisation  ${data}`)
-        var re = /all/im
-        if (data.toString().match(re)) {
-          var cpu_util = data.toString().replace(/(\n|\r)+$/, '').split('\n')
-          cpu_util.forEach(function(cpu_util_line){
-            var spl_line = cpu_util_line.replace(/ +/g, ' ').split(' ')
-            var re2 = /^[0-9]?$/
-            if (spl_line[1].match(re2)){
-              debug(`cpu utilisation core ${spl_line[1]} is ${spl_line[11]}`)
-              var pathArray = options.path_cpu_util.toString().split('\.')
-              var newPath = pathArray[0] + "."
-              for (i=1; i < (pathArray.length - 1); i++) {
-                newPath = newPath + pathArray[i].toString() +"."
-              }
-              newPath = newPath + "core." + (Number(spl_line[1])+1).toString()
-              newPath = newPath + "." + pathArray[(pathArray.length-1)]
-		var cpu_util_core = ((100 - Number(spl_line[11].replace(/,/, '.')))/100).toFixed(2)
-              app.handleMessage(plugin.id, {
-                updates: [
-                  {
-                    values: [ {
-                      path: newPath,
-                      value: Number(cpu_util_core)
-                    }]
-                  }
-                ]
-              })
-            }
-            else {
-              debug(`cpu utilisation is ${spl_line[11]}`)
-		cpu_util_all = ((100 - Number(spl_line[11].replace(/,/, '.')))/100).toFixed(2)
-              app.handleMessage(plugin.id, {
-                updates: [
-                  {
-                    values: [ {
-                      path: options.path_cpu_util,
-                      value: Number(cpu_util_all)
-                    }]
-                  }
-                ]
-              })
-            }
-          })
+    function getSailorHatValues() {
+      // {"V_in": 11.912109375, "V_supercap": 8.793017578125, "I_in": 0.3515625, "T_mcu": 298.9921875}
+      
+      const options = {
+        socketPath: options.default_socket, // Path to the Unix socket
+        path: '/values',                     // URL path of the request
+        method: 'GET',                      // HTTP method
+        headers: {
+          'Host': 'localhost',              // The 'Host' header is required
         }
-      })
+      };
 
-      cpuutilfull.on('error', (error) => {
-        console.error(error.toString())
-      })
+      const request = http.request(options, (response) => {
+        let data = '';
+      
+        response.on('data', (chunk) => {
+          data += chunk;
+        });
+      
+        response.on('end', () => {
+          debug(`got values: ${data}`)
+          const jsonData = JSON.parse(data);
 
-      cpuutilfull.stderr.on('data', function (data) {
-        console.error(data.toString())
-      })
+          // Destructure individual variables
+          const { V_in, V_supercap, I_in, T_mcu } = jsonData;
+
+          app.handleMessage(plugin.id, {
+            updates: [
+              {
+                values: [ 
+                  {
+                    path: options.path_input_voltage,
+                    value: Number(V_in)
+                  },
+                  {
+                    path: options.path_caps_voltage,
+                    value: Number(V_supercap)
+                  },
+                  {
+                    path: options.path_input_amps,
+                    value: Number(I_in)
+                  },
+                  {
+                    path: options.path_mcu_temp,
+                    value: Number(T_mcu)
+                  }
+                ]
+              }
+            ]
+          })
+        });
+      });
+      
+      request.on('error', (error) => {
+        console.error('Error:', error);
+      });
+      
+      request.end();
     }
 
-    function getMemUtil() {
-      var memutil = spawn('sh', ['-c', mem_util_command ])
+    function getSailorHatState() {
+      // {"state": "POWER_ON_5V_ON", "5v_output_enabled": true, "watchdog_enabled": true}
 
-      memutil.stdout.on('data', (data) => {
-        debug(`got memory  ${data}`)
-        var mem_util = data.toString().replace(/(\n|\r)+$/, '').split('\n')
-        var mem_total
-        var mem_free
-        var buffers
-        var cached
-        var slab
-        mem_util.forEach(function(mem_util_line) {
-          var splm_line = mem_util_line.replace(/ +/g, ' ').split(' ')
-          if (splm_line[0].toString() === "MemTotal:") {
-            mem_total = Number(splm_line[1])
-            debug(`got mem_total = ${mem_total}`)
-	  } else if (splm_line[0].toString() === "MemFree:") {
-	    mem_free = Number(splm_line[1])
-	    debug(`got mem_free = ${mem_free}`)
-          } else if (splm_line[0].toString() === "Buffers:") {
-            buffers = Number(splm_line[1])
-            debug(`got buffers = ${buffers}`)
-          } else if (splm_line[0].toString() === "Cached:") {
-            cached = Number(splm_line[1])
-            debug(`got cached = ${cached}`)
-          } else if (splm_line[0].toString() === "Slab:") {
-            slab = Number(splm_line[1])
-            debug(`got slab = ${slab}`)
-	  }
-	})
-	var mem_util_per = ((mem_total - (mem_free + buffers + cached + slab))/mem_total).toFixed(2)
-	debug(`mem_util_per: ${mem_util_per}`)
-	    
-        app.handleMessage(plugin.id, {
-          updates: [
-            {
-              values: [ {
-                path: options.path_mem_util,
-                value: Number(mem_util_per)
-              }]
-            }
-          ]
-        })
-      })
-      memutil.on('error', (error) => {
-        console.error(error.toString())
-      })
+      const options = {
+        socketPath: options.default_socket, // Path to the Unix socket
+        path: '/state',                     // URL path of the request
+        method: 'GET',                      // HTTP method
+        headers: {
+          'Host': 'localhost',              // The 'Host' header is required
+        }
+      };
 
-      memutil.stderr.on('data', function (data) {
-        console.error(data.toString())
-      })
-    }
+      const request = http.request(options, (response) => {
+        let data = '';
+      
+        response.on('data', (chunk) => {
+          data += chunk;
+        });
+      
+        response.on('end', () => {
+          debug(`got values: ${data}`)
+          const jsonData = JSON.parse(data);
 
-    function getSdUtil() {
-      var sdutil = spawn('sh', ['-c', sd_util_command ])
+          // Destructure individual variables
+          const { state, "5v_output_enabled": outputEnabled, "watchdog_enabled": watchdogEnabled } = jsonData;
 
-      sdutil.stdout.on('data', (data) => {
-        debug(`got sd  ${data}`)
-        var sd_util = Number(data.toString().replace(/(\n|\r)+$/, ''))/100
-        app.handleMessage(plugin.id, {
-          updates: [
-            {
-              values: [ {
-                path: options.path_sd_util,
-                value: Number(sd_util)
-              }]
-            }
-          ]
-        })
-      })
-
-      sdutil.on('error', (error) => {
-        console.error(error.toString())
-      })
-
-      sdutil.stderr.on('data', function (data) {
-        console.error(data.toString())
-      })
+          app.handleMessage(plugin.id, {
+            updates: [
+              {
+                values: [ 
+                  {
+                    path: options.path_shrpi_state,
+                    value: state
+                  },
+                  {
+                    path: options.path_output_enabled,
+                    value: outputEnabled
+                  },
+                  {
+                    path: options.path_watchdog_enabled,
+                    value: watchdogEnabled
+                  },
+                ]
+              }
+            ]
+          })
+        });
+      });
+      
+      request.on('error', (error) => {
+        console.error('Error:', error);
+      });
+      
+      request.end();
     }
 
     updateEnv()

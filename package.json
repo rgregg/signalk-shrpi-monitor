@@ -1,19 +1,19 @@
 {
-  "name": "signalk-rpi-monitor",
-  "version": "1.1.1",
-  "description": "Signal K Node Server Plugin for Raspberry PI monitoring",
-  "homepage": "https://github.com/sberl/signalk-rpi-monitor#readme",
+  "name": "signalk-shrpi-monitor",
+  "version": "1.0.0",
+  "description": "Signal K Node Server Plugin for Sailor Hat state monitoring",
+  "homepage": "https://github.com/rgregg/signalk-shrpi-monitor#readme",
   "keywords": [
     "signalk-node-server-plugin",
     "signalk-category-utility",
     "signalk-category-hardware"
   ],
  "author": {
-    "name": "Steve Berl",
-    "email": "steveberl@gmail.com"
+    "name": "Ryan Gregg",
+    "email": "ryan@ryangregg.com"
   },
   "bugs": {
-    "url": "https://github.com/sberl/signalk-rpi-monitor/issues"
+    "url": "https://github.com/rgregg/signalk-shrpi-monitor/issues"
   },
   "bundleDependencies": [],
   "dependencies": {
@@ -25,7 +25,7 @@
   "main": "index.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/sberl/signalk-rpi-monitor.git"
+    "url": "https://github.com/rgregg/signalk-shrpi-monitor.git"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
